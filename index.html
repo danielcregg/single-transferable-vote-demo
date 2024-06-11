@@ -24,45 +24,35 @@
 
     <h1>Single Transferable Vote (STV) System Demo</h1>
     <label for="numCandidates">Number of Candidates:</label>
-    <input type="number" id="numCandidates" value="3" min="2" max="10" onchange="generateSliders()">
+    <input type="number" id="numCandidates" value="3" min="2" max="10" onchange="generateInputs()">
     
-    <div id="candidateSliders"></div>
+    <div id="candidateInputs"></div>
     
     <label for="totalVoters">Total Voters:</label>
-    <input type="number" id="totalVoters" value="100" min="1" onchange="updateTotalVotes()">
+    <input type="number" id="totalVoters" value="100" min="1">
     
     <button onclick="calculateSTV()">Calculate STV Results</button>
 
     <div class="results" id="results"></div>
 
     <script>
-        function generateSliders() {
+        function generateInputs() {
             const numCandidates = document.getElementById('numCandidates').value;
-            const container = document.getElementById('candidateSliders');
+            const container = document.getElementById('candidateInputs');
             container.innerHTML = '';
             for (let i = 0; i < numCandidates; i++) {
-                const sliderContainer = document.createElement('div');
-                sliderContainer.className = 'candidate';
-                sliderContainer.innerHTML = `
-                    <label for="candidate${i}">Candidate ${i + 1} Votes:</label>
-                    <input type="range" id="candidate${i}" value="0" min="0" max="100" oninput="updateTotalVotes()">
-                    <span id="candidate${i}Value">0</span>
+                const candidateDiv = document.createElement('div');
+                candidateDiv.className = 'candidate';
+                candidateDiv.innerHTML = `
+                    <h3>Candidate ${i + 1}</h3>
+                    <label for="candidate${i}_first">1st Preference Votes:</label>
+                    <input type="number" id="candidate${i}_first" value="0" min="0"><br>
+                    <label for="candidate${i}_second">2nd Preference Votes:</label>
+                    <input type="number" id="candidate${i}_second" value="0" min="0"><br>
+                    <label for="candidate${i}_third">3rd Preference Votes:</label>
+                    <input type="number" id="candidate${i}_third" value="0" min="0"><br>
                 `;
-                container.appendChild(sliderContainer);
-            }
-        }
-
-        function updateTotalVotes() {
-            const numCandidates = document.getElementById('numCandidates').value;
-            let totalVotes = 0;
-            for (let i = 0; i < numCandidates; i++) {
-                const voteCount = document.getElementById(`candidate${i}`).value;
-                document.getElementById(`candidate${i}Value`).innerText = voteCount;
-                totalVotes += parseInt(voteCount);
-            }
-            const totalVoters = document.getElementById('totalVoters').value;
-            if (totalVotes > totalVoters) {
-                alert('Total votes exceed the number of voters. Adjust the sliders.');
+                container.appendChild(candidateDiv);
             }
         }
 
@@ -71,24 +61,48 @@
             const totalVoters = document.getElementById('totalVoters').value;
             let votes = [];
             for (let i = 0; i < numCandidates; i++) {
-                votes.push({ id: i, votes: parseInt(document.getElementById(`candidate${i}`).value) });
+                const firstPreference = parseInt(document.getElementById(`candidate${i}_first`).value);
+                const secondPreference = parseInt(document.getElementById(`candidate${i}_second`).value);
+                const thirdPreference = parseInt(document.getElementById(`candidate${i}_third`).value);
+                votes.push({ id: i, first: firstPreference, second: secondPreference, third: thirdPreference, total: firstPreference });
             }
 
             const quota = Math.floor(totalVoters / (numCandidates + 1)) + 1;
             let results = '';
             results += `<p>Quota to be elected: ${quota}</p>`;
 
-            while (votes.some(candidate => candidate.votes >= quota)) {
-                votes.sort((a, b) => b.votes - a.votes);
-                let electedCandidate = votes.find(candidate => candidate.votes >= quota);
-                results += `<div class="result">Candidate ${electedCandidate.id + 1} is elected with ${electedCandidate.votes} votes.</div>`;
+            while (votes.some(candidate => candidate.total >= quota)) {
+                votes.sort((a, b) => b.total - a.total);
+                let electedCandidate = votes.find(candidate => candidate.total >= quota);
+                results += `<div class="result">Candidate ${electedCandidate.id + 1} is elected with ${electedCandidate.total} votes.</div>`;
                 votes = votes.filter(candidate => candidate.id !== electedCandidate.id);
+
+                let surplusVotes = electedCandidate.total - quota;
+                if (surplusVotes > 0) {
+                    distributeSurplus(electedCandidate, surplusVotes, votes);
+                }
             }
 
             document.getElementById('results').innerHTML = results;
         }
 
-        generateSliders();
+        function distributeSurplus(electedCandidate, surplusVotes, votes) {
+            let totalSecondPreferenceVotes = 0;
+            for (let vote of votes) {
+                if (vote.second === electedCandidate.id) {
+                    totalSecondPreferenceVotes += vote.second;
+                }
+            }
+
+            for (let vote of votes) {
+                if (vote.second === electedCandidate.id) {
+                    let transferValue = (vote.second / totalSecondPreferenceVotes) * surplusVotes;
+                    vote.total += transferValue;
+                }
+            }
+        }
+
+        generateInputs();
     </script>
 
 </body>
