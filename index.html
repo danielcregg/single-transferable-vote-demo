@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STV Voting System Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .candidate {
+            margin-bottom: 10px;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .result {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Single Transferable Vote (STV) System Demo</h1>
+    <label for="numCandidates">Number of Candidates:</label>
+    <input type="number" id="numCandidates" value="3" min="2" max="10" onchange="generateSliders()">
+    
+    <div id="candidateSliders"></div>
+    
+    <label for="totalVoters">Total Voters:</label>
+    <input type="number" id="totalVoters" value="100" min="1" onchange="updateTotalVotes()">
+    
+    <button onclick="calculateSTV()">Calculate STV Results</button>
+
+    <div class="results" id="results"></div>
+
+    <script>
+        function generateSliders() {
+            const numCandidates = document.getElementById('numCandidates').value;
+            const container = document.getElementById('candidateSliders');
+            container.innerHTML = '';
+            for (let i = 0; i < numCandidates; i++) {
+                const sliderContainer = document.createElement('div');
+                sliderContainer.className = 'candidate';
+                sliderContainer.innerHTML = `
+                    <label for="candidate${i}">Candidate ${i + 1} Votes:</label>
+                    <input type="range" id="candidate${i}" value="0" min="0" max="100" oninput="updateTotalVotes()">
+                    <span id="candidate${i}Value">0</span>
+                `;
+                container.appendChild(sliderContainer);
+            }
+        }
+
+        function updateTotalVotes() {
+            const numCandidates = document.getElementById('numCandidates').value;
+            let totalVotes = 0;
+            for (let i = 0; i < numCandidates; i++) {
+                const voteCount = document.getElementById(`candidate${i}`).value;
+                document.getElementById(`candidate${i}Value`).innerText = voteCount;
+                totalVotes += parseInt(voteCount);
+            }
+            const totalVoters = document.getElementById('totalVoters').value;
+            if (totalVotes > totalVoters) {
+                alert('Total votes exceed the number of voters. Adjust the sliders.');
+            }
+        }
+
+        function calculateSTV() {
+            const numCandidates = document.getElementById('numCandidates').value;
+            const totalVoters = document.getElementById('totalVoters').value;
+            let votes = [];
+            for (let i = 0; i < numCandidates; i++) {
+                votes.push({ id: i, votes: parseInt(document.getElementById(`candidate${i}`).value) });
+            }
+
+            const quota = Math.floor(totalVoters / (numCandidates + 1)) + 1;
+            let results = '';
+            results += `<p>Quota to be elected: ${quota}</p>`;
+
+            while (votes.some(candidate => candidate.votes >= quota)) {
+                votes.sort((a, b) => b.votes - a.votes);
+                let electedCandidate = votes.find(candidate => candidate.votes >= quota);
+                results += `<div class="result">Candidate ${electedCandidate.id + 1} is elected with ${electedCandidate.votes} votes.</div>`;
+                votes = votes.filter(candidate => candidate.id !== electedCandidate.id);
+            }
+
+            document.getElementById('results').innerHTML = results;
+        }
+
+        generateSliders();
+    </script>
+
+</body>
+</html>
