@@ -23,14 +23,18 @@
 <body>
 
     <h1>Single Transferable Vote (STV) System Demo</h1>
-    <label for="numCandidates">Number of Candidates:</label>
-    <input type="number" id="numCandidates" value="3" min="2" max="10" onchange="generateInputs()">
-    
-    <div id="candidateInputs"></div>
     
     <label for="totalVoters">Total Voters:</label>
-    <input type="number" id="totalVoters" value="100" min="1">
+    <input type="number" id="totalVoters" value="100" min="1"><br>
+
+    <label for="numCandidates">Number of Candidates:</label>
+    <input type="number" id="numCandidates" value="3" min="2" max="10" onchange="generateInputs()"><br>
+
+    <label for="numElected">Number of Elected Positions:</label>
+    <input type="number" id="numElected" value="1" min="1" onchange="updateQuota()"><br>
     
+    <div id="candidateInputs"></div>
+
     <button onclick="calculateSTV()">Calculate STV Results</button>
 
     <div class="results" id="results"></div>
@@ -54,11 +58,21 @@
                 `;
                 container.appendChild(candidateDiv);
             }
+            updateQuota();
+        }
+
+        function updateQuota() {
+            const totalVoters = document.getElementById('totalVoters').value;
+            const numElected = document.getElementById('numElected').value;
+            const quota = Math.floor(totalVoters / (parseInt(numElected) + 1)) + 1;
+            document.getElementById('quota').innerText = `Quota to be elected: ${quota}`;
         }
 
         function calculateSTV() {
             const numCandidates = document.getElementById('numCandidates').value;
             const totalVoters = document.getElementById('totalVoters').value;
+            const numElected = document.getElementById('numElected').value;
+            const quota = Math.floor(totalVoters / (parseInt(numElected) + 1)) + 1;
             let votes = [];
             for (let i = 0; i < numCandidates; i++) {
                 const firstPreference = parseInt(document.getElementById(`candidate${i}_first`).value);
@@ -67,11 +81,10 @@
                 votes.push({ id: i, first: firstPreference, second: secondPreference, third: thirdPreference, total: firstPreference });
             }
 
-            const quota = Math.floor(totalVoters / (numCandidates + 1)) + 1;
             let results = '';
             results += `<p>Quota to be elected: ${quota}</p>`;
 
-            while (votes.some(candidate => candidate.total >= quota)) {
+            while (votes.some(candidate => candidate.total >= quota) && numElected > 0) {
                 votes.sort((a, b) => b.total - a.total);
                 let electedCandidate = votes.find(candidate => candidate.total >= quota);
                 results += `<div class="result">Candidate ${electedCandidate.id + 1} is elected with ${electedCandidate.total} votes.</div>`;
@@ -81,6 +94,7 @@
                 if (surplusVotes > 0) {
                     distributeSurplus(electedCandidate, surplusVotes, votes);
                 }
+                numElected--;
             }
 
             document.getElementById('results').innerHTML = results;
