@@ -1,33 +1,31 @@
+// DOM references
 const generateBtn = document.getElementById('generateBtn');
 const simulateBtn = document.getElementById('simulateBtn');
 const candidateList = document.getElementById('candidateList');
-const ctx = document.getElementById('voteChart').getContext('2d');
-let chart = null; // Add this line
+const roundInfo = document.getElementById('roundInfo');
+const nextRoundBtn = document.getElementById('nextRoundBtn');
+const prevRoundBtn = document.getElementById('prevRoundBtn');
+const progressBar = document.getElementById('progressBar');
+const electionStatus = document.getElementById('electionStatus');
 
+// State variables
+let chart = null;
 let candidates = [];
 let voters = [];
 let currentRound = 0;
 let quota = 0;
-let roundInfo = document.getElementById('roundInfo');
 let elected = [];
 let eliminated = [];
-
-// Add new variables
 let roundStates = [];
 let currentRoundIndex = -1;
+let voteFlows = [];
+let sankeyDiagram = null;
 
-// Add references to new UI elements
-const nextRoundBtn = document.getElementById('nextRoundBtn');
-const prevRoundBtn = document.getElementById('prevRoundBtn');
-
+// Constants
 const firstNames = ['James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda', 'William', 'Elizabeth'];
 const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez'];
 
-function generateRandomName() {
-    return `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`;
-}
-
-// Voter class to store preferences
+// Classes
 class Voter {
     constructor(id, preferences) {
         this.id = id;
@@ -44,6 +42,19 @@ class Voter {
         this.currentPreference++;
         return this.getCurrentVote();
     }
+}
+
+class VoteTransfer {
+    constructor(fromCandidate, toCandidate, votes, round) {
+        this.from = fromCandidate;
+        this.to = toCandidate;
+        this.value = votes;
+        this.round = round;
+    }
+}
+
+function generateRandomName() {
+    return `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`;
 }
 
 function calculateQuota(numVoters, numSeats) {
@@ -86,9 +97,11 @@ generateBtn.addEventListener('click', () => {
 
         const candidateCard = document.createElement('div');
         candidateCard.className = 'candidate-card';
+        candidateCard.dataset.candidate = candidate.name; // Add data attribute for tooltips
         candidateCard.innerHTML = `
             <img src="${candidate.image}" alt="${candidate.name}">
             <h3>${candidate.name}</h3>
+            <div class="vote-count">0 votes</div>
         `;
         candidateList.appendChild(candidateCard);
     }
@@ -98,6 +111,7 @@ generateBtn.addEventListener('click', () => {
         chart.destroy();
     }
     initializeChart();
+    initializeTooltips(); // Initialize tooltips after creating cards
 });
 
 async function runElection() {
@@ -106,7 +120,8 @@ async function runElection() {
     let seatsRemaining = seatsAvailable;
     
     quota = calculateQuota(numVoters, seatsAvailable);
-    roundInfo.innerHTML = `<p>Quota to get elected: ${quota} votes</p>`;
+    // Remove this line:
+    // roundInfo.innerHTML = `<p>Quota to get elected: ${quota} votes</p>`;
 
     // Generate voters with random preferences
     voters = Array.from({length: numVoters}, (_, i) =>
@@ -121,6 +136,12 @@ async function runElection() {
     let lowestCandidate = null; // Add this line
 
     voteFlows = []; // Reset vote flows
+
+    // Initialize progress bar
+    if (progressBar) {
+        progressBar.style.width = '0%';
+        progressBar.innerHTML = '<span>Round 0</span>';
+    }
 
     while (
         seatsRemaining > 0 &&
@@ -192,21 +213,14 @@ function saveRoundState(explanation) {
 
 // Update generateExplanation to accept parameters
 function generateExplanation(electedThisRound = [], lowestCandidate = null, transferDetails = '') {
-    let explanation = `<strong>Round ${currentRound} Analysis:</strong><br>`;
-    explanation += `Quota is calculated as floor(${voters.length} / (${seatsAvailable} + 1)) + 1 = ${quota}.<br><br>`;
-    explanation += `<strong>Candidates' Votes:</strong><br>`;
-    candidates.forEach(c => {
-        explanation += `${c.name}: ${c.votes.toFixed(2)} votes<br>`;
-        explanation += `First Preference Votes: ${countFirstPreferences(c.id)}<br>`;
-    });
-
-    explanation += `<br><strong>Actions Taken:</strong><br>`;
+    let explanation = `<strong>Round ${currentRound}</strong><br>`;
+    explanation += `<br><strong>Actions:</strong><br>`;
     if (electedThisRound.length > 0) {
         explanation += `Elected: ${electedThisRound.map(c => c.name).join(', ')}<br>`;
         explanation += transferDetails; // Add transfer details
     } else if (lowestCandidate) {
         explanation += `Eliminated: ${lowestCandidate.name}<br>`;
-        explanation += `Votes were transferred to next preferences.<br>`;
+        explanation += `Votes transferred to next preferences.<br>`;
     }
     return explanation;
 }
@@ -218,9 +232,11 @@ function countFirstPreferences(candidateId) {
 
 // Add function to update progress bar
 function updateProgressBar(current, total) {
+    if (!progressBar) return; // Guard clause in case element isn't found
+    
     const progress = (current / total) * 100;
     progressBar.style.width = `${progress}%`;
-    progressBar.innerText = `Round ${current}`;
+    progressBar.innerHTML = `<span>Round ${current}</span>`;
 }
 
 // Add function to display final results
@@ -245,6 +261,14 @@ async function countVotes() {
         let candidateId = voter.getCurrentVote();
         if (candidateId !== undefined) {
             candidates[candidateId].votes += voter.transferValue; // Use transfer value
+        }
+    });
+
+    // Update candidate card vote counts
+    candidates.forEach(candidate => {
+        const card = document.querySelector(`[data-candidate="${candidate.name}"] .vote-count`);
+        if (card) {
+            card.textContent = `${candidate.votes.toFixed(2)} votes`;
         }
     });
 
@@ -315,17 +339,16 @@ async function updateDisplay(roundText) {
 // Add function to update display based on stored round state
 function updateDisplayForRound(index) {
     const state = roundStates[index];
-    // Update round info
+    // Update round info without quota
     roundInfo.innerHTML = `
-        <p>Quota to get elected: ${state.quota} votes</p>
         <p><strong>Round ${state.round}</strong></p>
         ${state.candidates.map(c => {
             const status = state.elected.includes(c.id)
-                ? '(Elected)'
+                ? '<span class="status elected">Elected</span>'
                 : state.eliminated.includes(c.id)
-                ? '(Eliminated)'
+                ? '<span class="status eliminated">Eliminated</span>'
                 : '';
-            return `<p>${c.name}: ${c.votes} votes ${status}</p>`;
+            return `<p>${c.name}: ${c.votes.toFixed(2)} votes ${status}</p>`;
         }).join('')}
         <p>${state.explanation}</p>
     `;
@@ -382,78 +405,227 @@ simulateBtn.addEventListener('click', async () => {
     simulateBtn.disabled = false;
 });
 
-async function updateChart() {
-    if (!chart) return;
-
-    const electedIds = new Set(elected);
-    const eliminatedIds = new Set(eliminated);
-
-    chart.data.datasets[0].backgroundColor = candidates.map(c => {
-        if (electedIds.has(c.id)) return 'rgba(76, 175, 80, 0.6)'; // Green
-        if (eliminatedIds.has(c.id)) return 'rgba(244, 67, 54, 0.6)'; // Red
-        return 'rgba(33, 150, 243, 0.6)'; // Blue
-    });
-
-    chart.data.datasets[0].data = candidates.map(c => c.votes);
-
-    // Update quota line position
-    chart.options.plugins.annotation.annotations.quotaLine.yMin = quota;
-    chart.options.plugins.annotation.annotations.quotaLine.yMax = quota;
-
-    chart.update();
-}
-
+// Replace chart initialization with ApexCharts
 function initializeChart() {
-    if (chart) {
-        chart.destroy();
-    }
-
-    // Fix Chart.js plugin registration
-    Chart.register(window.ChartAnnotation);
-
-    chart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: candidates.map(c => c.name),
-            datasets: [{
-                label: 'Votes',
-                data: candidates.map(c => c.votes),
-                backgroundColor: candidates.map(() => 'rgba(33, 150, 243, 0.6)'),
-                borderColor: candidates.map(() => 'rgba(33, 150, 243, 1)'),
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                annotation: {
-                    annotations: {
-                        quotaLine: {
-                            type: 'line',
-                            yMin: quota,
-                            yMax: quota,
-                            borderColor: 'rgb(255, 0, 0)',
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            label: {
-                                content: 'Quota',
-                                enabled: true,
-                                position: 'center'
-                            }
-                        }
+    try {
+        const options = {
+            series: [{
+                name: 'Votes',
+                data: candidates.map(c => c.votes)
+            }],
+            chart: {
+                type: 'bar',
+                height: 350,
+                animations: {
+                    enabled: true,
+                    dynamicAnimation: {
+                        speed: 350
+                    }
+                },
+                background: 'transparent',
+                foreColor: '#fff'
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: false,
+                    columnWidth: '55%',
+                    borderRadius: 8,
+                    distributed: true
+                }
+            },
+            dataLabels: {
+                enabled: true,
+                formatter: function (val) {
+                    return val.toFixed(2)
+                },
+                style: {
+                    colors: ['#fff']
+                }
+            },
+            colors: candidates.map(c => {
+                if (elected.includes(c.id)) return '#2ecc71';
+                if (eliminated.includes(c.id)) return '#e74c3c';
+                return '#3498db';
+            }),
+            xaxis: {
+                categories: candidates.map(c => c.name),
+                labels: {
+                    style: {
+                        colors: Array(candidates.length).fill('#fff')
                     }
                 }
             },
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
+            yaxis: {
+                title: {
+                    text: 'Votes',
+                    style: {
+                        color: '#fff'
+                    }
+                },
+                min: 0,
+                max: Math.max(quota * 1.2, ...candidates.map(c => c.votes))
             },
-            animation: {
-                duration: 500
+            annotations: {
+                yaxis: [{
+                    y: quota,
+                    borderColor: '#e74c3c',
+                    label: {
+                        text: 'Quota',
+                        style: {
+                            color: '#fff',
+                            background: '#e74c3c'
+                        }
+                    }
+                }]
+            },
+            grid: {
+                borderColor: '#404040'
+            },
+            theme: {
+                mode: 'dark'
             }
+        };
+
+        if (chart) {
+            chart.destroy();
         }
+        
+        chart = new ApexCharts(document.querySelector("#voteChart"), options);
+        chart.render();
+    } catch (error) {
+        console.error('Chart initialization failed:', error);
+    }
+}
+
+async function updateChart() {
+    if (!chart) return;
+
+    try {
+        // Update the chart data and styling
+        chart.updateOptions({
+            series: [{
+                data: candidates.map(c => c.votes)
+            }],
+            colors: candidates.map(c => {
+                if (elected.includes(c.id)) return '#2ecc71';
+                if (eliminated.includes(c.id)) return '#e74c3c';
+                return '#3498db';
+            }),
+            yaxis: {
+                min: 0,
+                max: Math.max(quota * 1.2, ...candidates.map(c => c.votes))
+            },
+            annotations: {
+                yaxis: [{
+                    y: quota,
+                    borderColor: '#e74c3c',
+                    label: {
+                        text: 'Quota',
+                        style: {
+                            color: '#fff',
+                            background: '#e74c3c'
+                        }
+                    }
+                }]
+            }
+        });
+    } catch (error) {
+        console.error('Chart update failed:', error);
+    }
+}
+
+// Replace vote transfer visualization with anime.js
+function visualizeVoteTransfer(from, to, amount) {
+    const fromElement = document.querySelector(`[data-candidate="${from}"]`);
+    const toElement = document.querySelector(`[data-candidate="${to}"]`);
+    
+    const particle = document.createElement('div');
+    particle.className = 'vote-particle';
+    document.body.appendChild(particle);
+
+    anime({
+        targets: particle,
+        translateX: [fromElement.offsetLeft, toElement.offsetLeft],
+        translateY: [fromElement.offsetTop, toElement.offsetTop],
+        duration: 1000,
+        easing: 'easeInOutCubic',
+        complete: () => particle.remove()
     });
+}
+
+// Add tooltips to candidate cards
+function initializeTooltips() {
+    tippy('.candidate-card', {
+        content(reference) {
+            const candidate = candidates.find(c => c.name === reference.getAttribute('data-candidate'));
+            return `
+                Votes: ${candidate.votes}
+                Status: ${elected.includes(candidate.id) ? 'Elected' : 
+                         eliminated.includes(candidate.id) ? 'Eliminated' : 'In Running'}
+            `;
+        },
+        theme: 'custom',
+        placement: 'top'
+    });
+}
+
+// Replace createSankeyDiagram with Plotly Sankey implementation
+function createSankeyDiagram(round) {
+    // Prepare data for Plotly Sankey
+    const flowData = voteFlows.filter(flow => flow.round <= round);
+    const nodeNames = [];
+
+    // Collect unique node names
+    flowData.forEach(flow => {
+        if (!nodeNames.includes(flow.from)) nodeNames.push(flow.from);
+        if (!nodeNames.includes(flow.to)) nodeNames.push(flow.to);
+    });
+
+    const nodeIndices = {};
+    nodeNames.forEach((name, index) => {
+        nodeIndices[name] = index;
+    });
+
+    const sankeyData = {
+        type: "sankey",
+        orientation: "h",
+        node: {
+            pad: 15,
+            thickness: 20,
+            line: {
+                color: "black",
+                width: 0.5
+            },
+            label: nodeNames,
+            color: nodeNames.map(name => {
+                const candidate = candidates.find(c => c.name === name);
+                if (elected.includes(candidate.id)) return 'rgba(76, 175, 80, 0.8)';
+                if (eliminated.includes(candidate.id)) return 'rgba(244, 67, 54, 0.8)';
+                return 'rgba(33, 150, 243, 0.8)';
+            })
+        },
+        link: {
+            source: flowData.map(flow => nodeIndices[flow.from]),
+            target: flowData.map(flow => nodeIndices[flow.to]),
+            value: flowData.map(flow => flow.value),
+            color: flowData.map(flow => {
+                const candidate = candidates.find(c => c.name === flow.to);
+                if (elected.includes(candidate.id)) return "rgba(76, 175, 80, 0.6)";
+                if (eliminated.includes(candidate.id)) return "rgba(244, 67, 54, 0.6)";
+                return "rgba(33, 150, 243, 0.6)";
+            })
+        }
+    };
+
+    const layout = {
+        title: "Vote Transfers Sankey Diagram",
+        font: {
+            size: 10
+        },
+        margin: { t: 50, l: 50, r: 50, b: 50 }
+    };
+
+    Plotly.newPlot('sankeyDiagram', [sankeyData], layout, {responsive: true});
 }
 
 // Update candidate cards based on their status
@@ -473,114 +645,17 @@ function updateCandidateCards() {
     });
 }
 
-// Add after existing global variables
-let voteFlows = [];
-let sankeyDiagram = null;
-
-// Add new class to track vote transfers
-class VoteTransfer {
-    constructor(fromCandidate, toCandidate, votes, round) {
-        this.from = fromCandidate;
-        this.to = toCandidate;
-        this.value = votes;
-        this.round = round;
-    }
+// Add live quota calculation
+function updateQuota() {
+    const numVoters = parseInt(document.getElementById('numVoters').value) || 0;
+    const seatsAvailable = parseInt(document.getElementById('seatsAvailable').value) || 1;
+    const quota = calculateQuota(numVoters, seatsAvailable);
+    document.getElementById('quotaValue').textContent = quota;
 }
 
-// Add function to create Sankey diagram
-function createSankeyDiagram(round) {
-    const width = document.getElementById('sankeyDiagram').clientWidth;
-    const height = 400;
-    const padding = 20;
+// Add event listeners for live updates
+document.getElementById('numVoters').addEventListener('input', updateQuota);
+document.getElementById('seatsAvailable').addEventListener('input', updateQuota);
 
-    // Clear previous diagram
-    d3.select("#sankeyDiagram").selectAll("*").remove();
-
-    // Process data for Sankey
-    const nodes = [];
-    const links = [];
-    
-    // Add nodes for each candidate in each round up to current
-    for (let r = 0; r <= round; r++) {
-        candidates.forEach(candidate => {
-            nodes.push({
-                id: `${candidate.name}-${r}`,
-                name: candidate.name,
-                round: r
-            });
-        });
-    }
-
-    // Add links based on vote transfers
-    voteFlows
-        .filter(flow => flow.round <= round)
-        .forEach(flow => {
-            links.push({
-                source: `${flow.from}-${flow.round}`,
-                target: `${flow.to}-${flow.round + 1}`,
-                value: flow.value
-            });
-        });
-
-    // Create Sankey generator
-    const sankey = d3.sankey()
-        .nodeWidth(15)
-        .nodePadding(10)
-        .extent([[padding, padding], [width - padding, height - padding]]);
-
-    // Generate layout
-    const {nodes: sankeyNodes, links: sankeyLinks} = sankey({
-        nodes: nodes.map(d => Object.assign({}, d)),
-        links: links.map(d => Object.assign({}, d))
-    });
-
-    // Create SVG
-    const svg = d3.select("#sankeyDiagram")
-        .append("svg")
-        .attr("width", width)
-        .attr("height", height);
-
-    // Add links
-    svg.append("g")
-        .selectAll("path")
-        .data(sankeyLinks)
-        .join("path")
-        .attr("class", "link")
-        .attr("d", d3.sankeyLinkHorizontal())
-        .attr("stroke", d => {
-            const targetNode = nodes.find(n => n.id === d.target.id);
-            if (elected.includes(candidates.find(c => c.name === targetNode.name).id)) {
-                return "rgba(76, 175, 80, 0.6)";
-            }
-            if (eliminated.includes(candidates.find(c => c.name === targetNode.name).id)) {
-                return "rgba(244, 67, 54, 0.6)";
-            }
-            return "rgba(33, 150, 243, 0.6)";
-        })
-        .attr("stroke-width", d => Math.max(1, d.width));
-
-    // Add nodes
-    const node = svg.append("g")
-        .selectAll("g")
-        .data(sankeyNodes)
-        .join("g")
-        .attr("class", "node")
-        .attr("transform", d => `translate(${d.x0},${d.y0})`);
-
-    node.append("rect")
-        .attr("height", d => d.y1 - d.y0)
-        .attr("width", d => d.x1 - d.x0)
-        .attr("fill", d => {
-            const candidate = candidates.find(c => c.name === d.name);
-            if (elected.includes(candidate.id)) return "rgba(76, 175, 80, 0.8)";
-            if (eliminated.includes(candidate.id)) return "rgba(244, 67, 54, 0.8)";
-            return "rgba(33, 150, 243, 0.8)";
-        });
-
-    node.append("text")
-        .attr("x", d => (d.x1 - d.x0) / 2)
-        .attr("y", d => (d.y1 - d.y0) / 2)
-        .attr("dy", "0.35em")
-        .attr("text-anchor", "middle")
-        .text(d => `${d.name}\n(${Math.round(d.value)})`);
-}
+// Call initially to set first value
+updateQuota();

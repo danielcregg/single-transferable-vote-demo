@@ -1,73 +1,73 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <base href="/">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2196f3">
-    <title>Irish STV Election Simulator</title>
-    <link rel="manifest" href="manifest.json">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
-    <script>
-        // Ensure ChartAnnotation is available globally
-        window.ChartAnnotation = ChartAnnotation;
-    </script>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://unpkg.com/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+    <title>STV Election Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tippy.js@6/dist/tippy.css">
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"></script>
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/themes/light.css">
     <link href="styles.css" rel="stylesheet">
 </head>
 <body>
-    <header>
-        <h1>Single Transferable Vote Demonstration</h1>
-        <p class="subtitle">Experience Ireland's Electoral System</p>
-    </header>
-
-    <main>
-        <section id="parameters" class="card">
-            <h2>Election Parameters</h2>
-            <div class="input-group">
-                <label for="numVoters">Number of Voters:</label>
-                <input type="number" id="numVoters" min="10" max="1000" value="100">
+    <div class="container">
+        <div class="top-controls">
+            <div class="parameter-group">
+                <div class="compact-input">
+                    <label for="numVoters">Voters:</label>
+                    <input type="number" id="numVoters" min="10" max="1000" value="100">
+                </div>
+                <div class="compact-input">
+                    <label for="numCandidates">Candidates:</label>
+                    <input type="number" id="numCandidates" min="3" max="10" value="5">
+                </div>
+                <div class="compact-input">
+                    <label for="seatsAvailable">Seats:</label>
+                    <input type="number" id="seatsAvailable" min="1" max="5" value="3">
+                </div>
+                <div class="quota-display">
+                    Quota: <span id="quotaValue">-</span>
+                </div>
             </div>
-            <div class="input-group">
-                <label for="numCandidates">Number of Candidates:</label>
-                <input type="number" id="numCandidates" min="3" max="10" value="5">
+            <div class="action-buttons">
+                <button id="generateBtn" class="primary">Generate</button>
+                <button id="simulateBtn" class="primary" disabled>Simulate</button>
+                <div class="simulation-controls">
+                    <button id="prevRoundBtn" class="primary" disabled>◀</button>
+                    <button id="nextRoundBtn" class="primary" disabled>▶</button>
+                </div>
             </div>
-            <div class="input-group">
-                <label for="seatsAvailable">Seats Available:</label>
-                <input type="number" id="seatsAvailable" min="1" max="5" value="3">
-            </div>
-            <button id="generateBtn" class="primary">Generate Election</button>
-        </section>
-
-        <section id="candidates" class="card">
-            <h2>Candidates</h2>
-            <div id="candidateList" class="candidate-grid"></div>
-        </section>
-
-        <section id="simulation" class="card">
-            <h2>Election Progress</h2>
+        </div>
+        <main class="main-content">
             <div class="progress-container">
-                <div id="progressBar" class="progress-bar">Round 0</div>
+                <div id="progressBar" class="progress-bar"></div>
             </div>
-            <!-- Add visualization containers -->
-            <div class="visualization-container">
-                <div id="sankeyDiagram" class="sankey-container"></div>
-                <canvas id="voteChart"></canvas>
-            </div>
-            <div id="roundInfo"></div>
-            <!-- Navigation Buttons -->
-            <div class="navigation-buttons">
-                <button id="prevRoundBtn" class="primary" disabled>Previous Round</button>
-                <button id="nextRoundBtn" class="primary" disabled>Next Round</button>
-            </div>
-            <!-- Election Status Display -->
-            <div id="electionStatus"></div>
-            <button id="simulateBtn" class="primary" disabled>Start Simulation</button>
-        </section>
-    </main>
+            <section class="card">
+                <h2>Candidates</h2>
+                <div id="candidateList" class="candidate-grid"></div>
+            </section>
 
+            <section class="card">
+                <h2>Vote Distribution</h2>
+                <div id="voteChart" class="vote-chart"></div>
+            </section>
+
+            <section class="card">
+                <h2>Vote Transfers</h2>
+                <div id="flowVisualization" class="flow-visualization"></div>
+            </section>
+
+            <section class="card">
+                <div id="roundInfo"></div>
+                <div id="electionStatus"></div>
+            </section>
+        </main>
+    </div>
     <script src="app.js"></script>
 </body>
 </html>
