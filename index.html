@@ -12,6 +12,7 @@
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/themes/light.css">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <link href="styles.css" rel="stylesheet">
 </head>
 <body>
@@ -37,15 +38,26 @@
             <div class="action-buttons">
                 <button id="generateBtn" class="primary">Generate</button>
                 <button id="simulateBtn" class="primary" disabled>Simulate</button>
-                <div class="simulation-controls">
-                    <button id="prevRoundBtn" class="primary" disabled>◀</button>
-                    <button id="nextRoundBtn" class="primary" disabled>▶</button>
+                <div class="navigation-controls">
+                    <div class="control-group">
+                        <span class="nav-label">Round:</span>
+                        <button id="prevRoundBtn" class="primary" disabled>◀</button>
+                        <button id="nextRoundBtn" class="primary" disabled>▶</button>
+                    </div>
+                    <div class="control-group">
+                        <span class="nav-label">Action:</span>
+                        <button id="prevActionBtn" class="primary" disabled>◀</button>
+                        <button id="nextActionBtn" class="primary" disabled>▶</button>
+                    </div>
                 </div>
             </div>
         </div>
         <main class="main-content">
             <div class="progress-container">
                 <div id="progressBar" class="progress-bar"></div>
+            </div>
+            <div class="progress-container">
+                <div id="actionProgress" class="progress-bar progress-bar-action"></div>
             </div>
             <section class="card">
                 <h2>Candidates</h2>
@@ -60,6 +72,7 @@
             <section class="card">
                 <h2>Vote Transfers</h2>
                 <div id="flowVisualization" class="flow-visualization"></div>
+                <div id="sankeyDiagram" class="sankey-container"></div>
             </section>
 
             <section class="card">

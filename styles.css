@@ -12,6 +12,7 @@
     --accent-green: #2ecc71;
     --accent-red: #e74c3c;
     --gradient-primary: linear-gradient(135deg, #3498db, #2ecc71);
+    --gradient-secondary: linear-gradient(45deg, #e67e22, #d35400);
 }
 
 * {
@@ -177,6 +178,10 @@ input[type="number"] {
     font-size: 0.8rem;
     font-weight: 500;
     text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.progress-bar-action {
+    background: var(--gradient-secondary);
 }
 
 /* Candidate Card Status Styles */
@@ -389,4 +394,23 @@ html {
 .status.eliminated {
     background: var(--accent-red);
     color: white;
+}
+
+/* Add styles for new navigation controls */
+.navigation-controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.nav-label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-right: 0.25rem;
 }

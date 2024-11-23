@@ -7,6 +7,8 @@ const nextRoundBtn = document.getElementById('nextRoundBtn');
 const prevRoundBtn = document.getElementById('prevRoundBtn');
 const progressBar = document.getElementById('progressBar');
 const electionStatus = document.getElementById('electionStatus');
+const prevActionBtn = document.getElementById('prevActionBtn');
+const nextActionBtn = document.getElementById('nextActionBtn');
 
 // State variables
 let chart = null;
@@ -20,10 +22,22 @@ let roundStates = [];
 let currentRoundIndex = -1;
 let voteFlows = [];
 let sankeyDiagram = null;
+let currentAction = '';
+let totalActions = 0;
+let currentActionIndex = 0;
+let actionsInRound = [];
 
 // Constants
-const firstNames = ['James', 'Mary', 'John', 'Patricia', 'Robert', 'Jennifer', 'Michael', 'Linda', 'William', 'Elizabeth'];
-const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez'];
+const firstNames = [
+    'Seán', 'Conor', 'Jack', 'James', 'Daniel', 
+    'Aoife', 'Siobhan', 'Síle', 'Órla', 'Róisín',
+    'Patrick', 'Michael', 'Emma', 'Sarah', 'Lucy'
+];
+const lastNames = [
+    'Murphy', 'Kelly', 'Walsh', 'McCarthy', 'Byrne', 
+    'Ryan', 'Carroll', 'Doyle', 'Connolly', 'Hughes',
+    'Flynn', 'Kennedy', 'Quinn', 'Lynch', 'Daly'
+];
 
 // Classes
 class Voter {
@@ -53,8 +67,34 @@ class VoteTransfer {
     }
 }
 
+// Replace the existing generateRandomName function
 function generateRandomName() {
-    return `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`;
+    // Keep track of used names
+    if (!window.usedFirstNames) window.usedFirstNames = new Set();
+    if (!window.usedLastNames) window.usedLastNames = new Set();
+    
+    // Reset used names if we've used them all
+    if (window.usedFirstNames.size >= firstNames.length || 
+        window.usedLastNames.size >= lastNames.length) {
+        window.usedFirstNames.clear();
+        window.usedLastNames.clear();
+    }
+    
+    // Find unused names
+    let firstName, lastName;
+    do {
+        firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+    } while (window.usedFirstNames.has(firstName));
+    
+    do {
+        lastName = lastNames[Math.floor(Math.random() * firstNames.length)];
+    } while (window.usedLastNames.has(lastName));
+    
+    // Mark names as used
+    window.usedFirstNames.add(firstName);
+    window.usedLastNames.add(lastName);
+    
+    return `${firstName} ${lastName}`;
 }
 
 function calculateQuota(numVoters, numSeats) {
@@ -114,88 +154,154 @@ generateBtn.addEventListener('click', () => {
     initializeTooltips(); // Initialize tooltips after creating cards
 });
 
+// Update runElection to run simulation without delays
 async function runElection() {
-    const numVoters = parseInt(document.getElementById('numVoters').value);
-    const seatsAvailable = parseInt(document.getElementById('seatsAvailable').value);
-    let seatsRemaining = seatsAvailable;
-    
-    quota = calculateQuota(numVoters, seatsAvailable);
-    // Remove this line:
-    // roundInfo.innerHTML = `<p>Quota to get elected: ${quota} votes</p>`;
-
-    // Generate voters with random preferences
-    voters = Array.from({length: numVoters}, (_, i) =>
-        new Voter(i, generateRandomPreferences(candidates.length))
-    );
-
-    const maxRounds = candidates.length;
-    roundStates = []; // Reset round states
-    currentRoundIndex = -1;
-
-    let electedThisRound = []; // Add this line
-    let lowestCandidate = null; // Add this line
-
-    voteFlows = []; // Reset vote flows
-
-    // Initialize progress bar
-    if (progressBar) {
-        progressBar.style.width = '0%';
-        progressBar.innerHTML = '<span>Round 0</span>';
-    }
-
-    while (
-        seatsRemaining > 0 &&
-        candidates.filter(c => !eliminated.includes(c.id) && !elected.includes(c.id)).length > 0
-    ) {
-        currentRound++;
-        updateProgressBar(currentRound, maxRounds); // Update progress bar
-        await countVotes();
-
-        // Find candidates meeting quota
-        electedThisRound = candidates.filter(
-            c => c.votes >= quota && !elected.includes(c.id) && !eliminated.includes(c.id)
+    try {
+        const numVoters = parseInt(document.getElementById('numVoters').value);
+        const seatsAvailable = parseInt(document.getElementById('seatsAvailable').value);
+        let seatsRemaining = seatsAvailable;
+        
+        quota = calculateQuota(numVoters, seatsAvailable);
+        voters = Array.from({length: numVoters}, (_, i) =>
+            new Voter(i, generateRandomPreferences(candidates.length))
         );
-
-        // Generate explanation for this round
-        const explanation = generateExplanation(electedThisRound, lowestCandidate);
-
-        // Save state of the current round
-        saveRoundState(explanation);
-
-        if (electedThisRound.length > 0) {
-            for (let candidate of electedThisRound) {
-                elected.push(candidate.id);
-                seatsRemaining--;
-                const transferDetails = await transferSurplus(candidate);
-                const explanation = generateExplanation(electedThisRound, null, transferDetails);
-                saveRoundState(explanation);
+    
+        const maxRounds = candidates.length * 2;
+        roundStates = [];
+        currentRoundIndex = -1;
+        
+        // Don't update UI during simulation
+        progressBar.style.width = '0%';
+        progressBar.innerHTML = '<span>Simulating...</span>';
+    
+        while (
+            seatsRemaining > 0 &&
+            candidates.filter(c => !eliminated.includes(c.id) && !elected.includes(c.id)).length > 0
+        ) {
+            try {
+                currentRound++;
+                if (currentRound > maxRounds) {
+                    throw new Error('Maximum rounds exceeded');
+                }
+                
+                totalActions = 0;
+                currentActionIndex = 0;
+                actionsInRound = [];
+                
+                // Count votes without UI updates
+                await countVotesQuiet();
+                saveActionState('count', 'Counting first preferences');
+                
+                electedThisRound = candidates.filter(
+                    c => c.votes >= quota && !elected.includes(c.id) && !eliminated.includes(c.id)
+                );
+                
+                if (electedThisRound.length > 0) {
+                    for (let candidate of electedThisRound) {
+                        elected.push(candidate.id);
+                        seatsRemaining--;
+                        const transferDetails = await transferSurplusQuiet(candidate);
+                        saveActionState('surplus', transferDetails);
+                    }
+                } else {
+                    lowestCandidate = candidates
+                        .filter(c => !eliminated.includes(c.id) && !elected.includes(c.id))
+                        .reduce((min, c) => (c.votes < min.votes ? c : min));
+                    
+                    eliminated.push(lowestCandidate.id);
+                    await transferVotesQuiet(lowestCandidate);
+                    saveActionState('elimination', `Eliminated: ${lowestCandidate.name}`);
+                }
+                
+                voters.forEach(voter => {
+                    if (eliminated.includes(voter.getCurrentVote())) {
+                        voter.moveToNextPreference();
+                    }
+                });
+                
+                saveRoundState(generateExplanation(electedThisRound, lowestCandidate, ''));
+            } catch (error) {
+                console.error('Error during election round:', error);
+                break;
             }
-        } else {
-            // Eliminate candidate with fewest votes
-            lowestCandidate = candidates
-                .filter(c => !eliminated.includes(c.id) && !elected.includes(c.id))
-                .reduce((min, c) => (c.votes < min.votes ? c : min));
-
-            eliminated.push(lowestCandidate.id);
-            await transferVotes(lowestCandidate);
         }
-
-        // Clear votes for next round
-        voters.forEach(voter => {
-            if (eliminated.includes(voter.getCurrentVote())) {
-                voter.moveToNextPreference();
-            }
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Show first round after simulation completes
+        currentRoundIndex = 0;
+        await updateDisplayForRound(currentRoundIndex);
+        displayFinalResults();
+        
+    } catch (error) {
+        console.error('Election simulation failed:', error);
+        alert('The simulation encountered an error. Please try again.');
+    } finally {
+        simulateBtn.disabled = false;
+        nextRoundBtn.disabled = false;
+        prevRoundBtn.disabled = false;
+        prevActionBtn.disabled = false;
+        nextActionBtn.disabled = false;
     }
+}
 
-    // After the election ends, set currentRoundIndex for navigation
-    currentRoundIndex = 0;
-    updateDisplayForRound(currentRoundIndex);
+// Add quiet versions of vote counting and transfer functions that don't update UI
+async function countVotesQuiet() {
+    candidates.forEach(c => c.votes = 0);
+    voters.forEach(voter => {
+        let candidateId = voter.getCurrentVote();
+        if (candidateId !== undefined) {
+            candidates[candidateId].votes += voter.transferValue;
+        }
+    });
+}
 
-    // Display final results
-    displayFinalResults();
+async function transferSurplusQuiet(candidate) {
+    const surplus = candidate.votes - quota;
+    const transferValue = surplus / candidate.votes;
+    const votersByNextPref = new Map();
+    const candidateVoters = voters.filter(v => v.getCurrentVote() === candidate.id);
+    
+    candidateVoters.forEach(voter => {
+        const nextPref = voter.preferences[voter.currentPreference + 1];
+        if (nextPref !== undefined) {
+            if (!votersByNextPref.has(nextPref)) {
+                votersByNextPref.set(nextPref, []);
+            }
+            votersByNextPref.get(nextPref).push(voter);
+        }
+    });
+
+    votersByNextPref.forEach((voters, nextPrefId) => {
+        const transferredVotes = voters.length * transferValue;
+        voteFlows.push(new VoteTransfer(
+            candidates[candidate.id].name,
+            candidates[nextPrefId].name,
+            transferredVotes,
+            currentRound
+        ));
+    });
+
+    candidateVoters.forEach(voter => {
+        const oldValue = voter.transferValue;
+        voter.transferValue = oldValue * transferValue;
+        voter.moveToNextPreference();
+    });
+
+    return `
+        <br>Transfer Details:<br>
+        - Original Votes: ${candidate.votes}<br>
+        - Quota: ${quota}<br>
+        - Surplus: ${surplus.toFixed(2)}<br>
+        - Transfer Value: ${transferValue.toFixed(3)}<br>
+        - Number of Votes Transferred: ${candidateVoters.length}
+    `;
+}
+
+async function transferVotesQuiet(candidate) {
+    voters.forEach(voter => {
+        if (voter.getCurrentVote() === candidate.id) {
+            voter.moveToNextPreference();
+        }
+    });
 }
 
 // Add function to save state after each round
@@ -206,9 +312,29 @@ function saveRoundState(explanation) {
         elected: [...elected],
         eliminated: [...eliminated],
         quota: quota,
-        explanation: explanation
+        explanation: explanation,
+        actions: [...actionsInRound] // Add this line
     };
     roundStates.push(state);
+}
+
+// Add this function after saveRoundState
+function saveActionState(actionType, details) {
+    try {
+        actionsInRound.push({
+            type: actionType,
+            details: details,
+            candidates: JSON.parse(JSON.stringify(candidates)),
+            elected: [...elected],
+            eliminated: [...eliminated],
+            actionIndex: currentActionIndex
+        });
+        
+        // Use current round for progress during simulation
+        updateProgressBar(currentRound, candidates.length * 2, actionType);
+    } catch (error) {
+        console.error('Error saving action state:', error);
+    }
 }
 
 // Update generateExplanation to accept parameters
@@ -230,13 +356,28 @@ function countFirstPreferences(candidateId) {
     return voters.filter(voter => voter.preferences[0] === candidateId).length;
 }
 
-// Add function to update progress bar
-function updateProgressBar(current, total) {
-    if (!progressBar) return; // Guard clause in case element isn't found
-    
-    const progress = (current / total) * 100;
-    progressBar.style.width = `${progress}%`;
-    progressBar.innerHTML = `<span>Round ${current}</span>`;
+// Fix the updateProgressBar function
+function updateProgressBar(current, total, action) {
+    try {
+        // Main progress bar shows overall round progress
+        if (progressBar) {
+            // During simulation use current/total, after simulation use roundStates
+            const percent = roundStates.length > 0 ? 
+                ((currentRoundIndex + 1) / roundStates.length * 100) :
+                (current / total * 100);
+            progressBar.style.width = `${percent}%`;
+            progressBar.innerHTML = `<span>Round ${current} of ${total}</span>`;
+        }
+
+        // Action progress shows progress within current round
+        if (actionProgress && totalActions > 0) {
+            const actionPercent = ((currentActionIndex + 1) / totalActions * 100);
+            actionProgress.style.width = `${actionPercent}%`;
+            actionProgress.innerHTML = `<span>${action} (${currentActionIndex + 1}/${totalActions})</span>`;
+        }
+    } catch (error) {
+        console.error('Error updating progress bars:', error);
+    }
 }
 
 // Add function to display final results
@@ -337,34 +478,119 @@ async function updateDisplay(roundText) {
 }
 
 // Add function to update display based on stored round state
-function updateDisplayForRound(index) {
-    const state = roundStates[index];
-    // Update round info without quota
-    roundInfo.innerHTML = `
-        <p><strong>Round ${state.round}</strong></p>
-        ${state.candidates.map(c => {
-            const status = state.elected.includes(c.id)
-                ? '<span class="status elected">Elected</span>'
-                : state.eliminated.includes(c.id)
-                ? '<span class="status eliminated">Eliminated</span>'
-                : '';
-            return `<p>${c.name}: ${c.votes.toFixed(2)} votes ${status}</p>`;
-        }).join('')}
-        <p>${state.explanation}</p>
-    `;
-    // Update chart data
-    candidates = state.candidates;
-    elected = state.elected;
-    eliminated = state.eliminated;
-    quota = state.quota;
-    updateChart();
-    updateCandidateCards();
-    // Update navigation buttons
-    prevRoundBtn.disabled = index <= 0;
-    nextRoundBtn.disabled = index >= roundStates.length - 1;
-
-    createSankeyDiagram(index);
+async function updateDisplayForRound(index) {
+    try {
+        const state = roundStates[index];
+        if (!state) return;
+        
+        // Update round info
+        roundInfo.innerHTML = `
+            <p><strong>Round ${state.round}</strong></p>
+            ${state.candidates.map(c => {
+                const status = state.elected.includes(c.id)
+                    ? '<span class="status elected">Elected</span>'
+                    : state.eliminated.includes(c.id)
+                    ? '<span class="status eliminated">Eliminated</span>'
+                    : '';
+                return `<p>${c.name}: ${c.votes.toFixed(2)} votes ${status}</p>`;
+            }).join('')}
+            <p>${state.explanation}</p>
+        `;
+    
+        // Update state
+        candidates = state.candidates;
+        elected = state.elected;
+        eliminated = state.eliminated;
+        quota = state.quota;
+        currentRound = state.round;
+        
+        // Update actions for this round
+        actionsInRound = state.actions || [];
+        currentActionIndex = 0;
+        
+        // Update UI
+        await updateChart().catch(console.error);
+        updateCandidateCards();
+        
+        try {
+            createSankeyDiagram(index);
+        } catch (error) {
+            console.error('Failed to create Sankey diagram:', error);
+        }
+        
+        // Update navigation buttons
+        prevRoundBtn.disabled = index <= 0;
+        nextRoundBtn.disabled = index >= roundStates.length - 1;
+        
+        // Update action navigation
+        updateActionNavigation();
+        updateProgressBar(state.round, roundStates.length, 'Round Start');
+    } catch (error) {
+        console.error('Error in updateDisplayForRound:', error);
+    }
 }
+
+// Add these new functions
+function updateDisplayForAction(actionIndex) {
+    try {
+        if (!actionsInRound || actionIndex < 0 || actionIndex >= actionsInRound.length) {
+            console.warn('Invalid action index or no actions available');
+            return;
+        }
+        
+        const action = actionsInRound[actionIndex];
+        
+        // Update state
+        candidates = JSON.parse(JSON.stringify(action.candidates));
+        elected = [...action.elected];
+        eliminated = [...action.eliminated];
+        
+        // Update displays
+        updateChart().catch(console.error);
+        updateCandidateCards();
+        
+        // Update info display
+        roundInfo.innerHTML = `
+            <p><strong>Round ${currentRound}</strong></p>
+            <p><strong>Action ${actionIndex + 1} of ${actionsInRound.length}:</strong> ${action.type}</p>
+            <p>${action.details}</p>
+        `;
+        
+        try {
+            createSankeyDiagram(currentRoundIndex);
+        } catch (error) {
+            console.error('Failed to update Sankey diagram:', error);
+        }
+        
+        // Update navigation
+        updateActionNavigation();
+        updateProgressBar(currentRound, roundStates.length, action.type);
+        
+    } catch (error) {
+        console.error('Error in updateDisplayForAction:', error);
+    }
+}
+
+// Add new function to update action navigation
+function updateActionNavigation() {
+    prevActionBtn.disabled = currentActionIndex <= 0;
+    nextActionBtn.disabled = currentActionIndex >= actionsInRound.length - 1;
+}
+
+// Add event listeners for action navigation
+prevActionBtn.addEventListener('click', () => {
+    if (currentActionIndex > 0) {
+        currentActionIndex--;
+        updateDisplayForAction(currentActionIndex);
+    }
+});
+
+nextActionBtn.addEventListener('click', () => {
+    if (currentActionIndex < actionsInRound.length - 1) {
+        currentActionIndex++;
+        updateDisplayForAction(currentActionIndex);
+    }
+});
 
 // Add event listeners for navigation buttons
 nextRoundBtn.addEventListener('click', () => {
@@ -391,11 +617,15 @@ simulateBtn.addEventListener('click', async () => {
     electionStatus.innerHTML = '';
     roundStates = [];
     currentRoundIndex = -1;
-
+    currentActionIndex = 0;
+    actionsInRound = [];
+    
     // Disable buttons during simulation
     simulateBtn.disabled = true;
     nextRoundBtn.disabled = true;
     prevRoundBtn.disabled = true;
+    prevActionBtn.disabled = true;
+    nextActionBtn.disabled = true;
 
     await runElection();
 
@@ -403,6 +633,8 @@ simulateBtn.addEventListener('click', async () => {
     nextRoundBtn.disabled = false;
     prevRoundBtn.disabled = false;
     simulateBtn.disabled = false;
+    prevActionBtn.disabled = false;
+    nextActionBtn.disabled = false;
 });
 
 // Replace chart initialization with ApexCharts
@@ -502,7 +734,7 @@ async function updateChart() {
 
     try {
         // Update the chart data and styling
-        chart.updateOptions({
+        return chart.updateOptions({
             series: [{
                 data: candidates.map(c => c.votes)
             }],
@@ -531,6 +763,7 @@ async function updateChart() {
         });
     } catch (error) {
         console.error('Chart update failed:', error);
+        throw error;
     }
 }
 
@@ -561,7 +794,7 @@ function initializeTooltips() {
             return `
                 Votes: ${candidate.votes}
                 Status: ${elected.includes(candidate.id) ? 'Elected' : 
-                         eliminated.includes(candidate.id) ? 'Eliminated' : 'In Running'}
+                        eliminated.includes(candidate.id) ? 'Eliminated' : 'In Running'}
             `;
         },
         theme: 'custom',
@@ -571,61 +804,75 @@ function initializeTooltips() {
 
 // Replace createSankeyDiagram with Plotly Sankey implementation
 function createSankeyDiagram(round) {
-    // Prepare data for Plotly Sankey
-    const flowData = voteFlows.filter(flow => flow.round <= round);
-    const nodeNames = [];
-
-    // Collect unique node names
-    flowData.forEach(flow => {
-        if (!nodeNames.includes(flow.from)) nodeNames.push(flow.from);
-        if (!nodeNames.includes(flow.to)) nodeNames.push(flow.to);
-    });
-
-    const nodeIndices = {};
-    nodeNames.forEach((name, index) => {
-        nodeIndices[name] = index;
-    });
-
-    const sankeyData = {
-        type: "sankey",
-        orientation: "h",
-        node: {
-            pad: 15,
-            thickness: 20,
-            line: {
-                color: "black",
-                width: 0.5
-            },
-            label: nodeNames,
-            color: nodeNames.map(name => {
-                const candidate = candidates.find(c => c.name === name);
-                if (elected.includes(candidate.id)) return 'rgba(76, 175, 80, 0.8)';
-                if (eliminated.includes(candidate.id)) return 'rgba(244, 67, 54, 0.8)';
-                return 'rgba(33, 150, 243, 0.8)';
-            })
-        },
-        link: {
-            source: flowData.map(flow => nodeIndices[flow.from]),
-            target: flowData.map(flow => nodeIndices[flow.to]),
-            value: flowData.map(flow => flow.value),
-            color: flowData.map(flow => {
-                const candidate = candidates.find(c => c.name === flow.to);
-                if (elected.includes(candidate.id)) return "rgba(76, 175, 80, 0.6)";
-                if (eliminated.includes(candidate.id)) return "rgba(244, 67, 54, 0.6)";
-                return "rgba(33, 150, 243, 0.6)";
-            })
+    try {
+        if (typeof Plotly === 'undefined') {
+            console.warn('Plotly is not loaded, skipping Sankey diagram');
+            return;
         }
-    };
 
-    const layout = {
-        title: "Vote Transfers Sankey Diagram",
-        font: {
-            size: 10
-        },
-        margin: { t: 50, l: 50, r: 50, b: 50 }
-    };
+        // Prepare data for Plotly Sankey
+        const flowData = voteFlows.filter(flow => flow.round <= round);
+        if (flowData.length === 0) return; // Skip if no flow data
 
-    Plotly.newPlot('sankeyDiagram', [sankeyData], layout, {responsive: true});
+        const nodeNames = [];
+        // Collect unique node names
+        flowData.forEach(flow => {
+            if (!nodeNames.includes(flow.from)) nodeNames.push(flow.from);
+            if (!nodeNames.includes(flow.to)) nodeNames.push(flow.to);
+        });
+    
+        const nodeIndices = {};
+        nodeNames.forEach((name, index) => {
+            nodeIndices[name] = index;
+        });
+    
+        const sankeyData = {
+            type: "sankey",
+            orientation: "h",
+            node: {
+                pad: 15,
+                thickness: 20,
+                line: {
+                    color: "black",
+                    width: 0.5
+                },
+                label: nodeNames,
+                color: nodeNames.map(name => {
+                    const candidate = candidates.find(c => c.name === name);
+                    if (elected.includes(candidate.id)) return 'rgba(76, 175, 80, 0.8)';
+                    if (eliminated.includes(candidate.id)) return 'rgba(244, 67, 54, 0.8)';
+                    return 'rgba(33, 150, 243, 0.8)';
+                })
+            },
+            link: {
+                source: flowData.map(flow => nodeIndices[flow.from]),
+                target: flowData.map(flow => nodeIndices[flow.to]),
+                value: flowData.map(flow => flow.value),
+                color: flowData.map(flow => {
+                    const candidate = candidates.find(c => c.name === flow.to);
+                    if (elected.includes(candidate.id)) return "rgba(76, 175, 80, 0.6)";
+                    if (eliminated.includes(candidate.id)) return "rgba(244, 67, 54, 0.6)";
+                    return "rgba(33, 150, 243, 0.6)";
+                })
+            }
+        };
+    
+        const layout = {
+            title: "Vote Transfers Sankey Diagram",
+            font: {
+                size: 10
+            },
+            margin: { t: 50, l: 50, r: 50, b: 50 }
+        };
+    
+        Plotly.newPlot('sankeyDiagram', [sankeyData], layout, {responsive: true})
+            .catch(error => {
+                console.error('Error creating Sankey diagram:', error);
+            });
+    } catch (error) {
+        console.error('Error in createSankeyDiagram:', error);
+        // Continue simulation even if diagram fails
+    }
 }
 
 // Update candidate cards based on their status
