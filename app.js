@@ -192,9 +192,11 @@ async function runElection() {
                 await countVotesQuiet();
                 saveActionState('count', 'Counting first preferences');
                 
-                electedThisRound = candidates.filter(
+                const electedThisRound = candidates.filter(
                     c => c.votes >= quota && !elected.includes(c.id) && !eliminated.includes(c.id)
                 );
+                
+                let lowestCandidate = null;
                 
                 if (electedThisRound.length > 0) {
                     for (let candidate of electedThisRound) {
@@ -204,13 +206,17 @@ async function runElection() {
                         saveActionState('surplus', transferDetails);
                     }
                 } else {
-                    lowestCandidate = candidates
-                        .filter(c => !eliminated.includes(c.id) && !elected.includes(c.id))
-                        .reduce((min, c) => (c.votes < min.votes ? c : min));
+                    const remainingCandidates = candidates
+                        .filter(c => !eliminated.includes(c.id) && !elected.includes(c.id));
                     
-                    eliminated.push(lowestCandidate.id);
-                    await transferVotesQuiet(lowestCandidate);
-                    saveActionState('elimination', `Eliminated: ${lowestCandidate.name}`);
+                    if (remainingCandidates.length > 0) {
+                        lowestCandidate = remainingCandidates
+                            .reduce((min, c) => (c.votes < min.votes ? c : min));
+                        
+                        eliminated.push(lowestCandidate.id);
+                        await transferVotesQuiet(lowestCandidate);
+                        saveActionState('elimination', `Eliminated: ${lowestCandidate.name}`);
+                    }
                 }
                 
                 voters.forEach(voter => {
@@ -525,9 +531,27 @@ async function updateDisplayForRound(index) {
         // Update action navigation
         updateActionNavigation();
         updateProgressBar(state.round, roundStates.length, 'Round Start');
+        
+        // Update final results based on current state
+        updateFinalResults();
     } catch (error) {
         console.error('Error in updateDisplayForRound:', error);
     }
+}
+
+// Add function to update final results based on current state
+function updateFinalResults() {
+    let resultHtml = '<h3>Final Results</h3>';
+    resultHtml += '<ul>';
+    for (let candidate of candidates) {
+        if (elected.includes(candidate.id)) {
+            resultHtml += `<li><strong>${candidate.name}</strong> - Elected</li>`;
+        } else {
+            resultHtml += `<li>${candidate.name} - Not Elected</li>`;
+        }
+    }
+    resultHtml += '</ul>';
+    electionStatus.innerHTML = resultHtml;
 }
 
 // Add these new functions
@@ -637,133 +661,191 @@ simulateBtn.addEventListener('click', async () => {
     nextActionBtn.disabled = false;
 });
 
-// Replace chart initialization with ApexCharts
+// Replace chart initialization with fallback HTML5 Canvas implementation
 function initializeChart() {
     try {
-        const options = {
-            series: [{
-                name: 'Votes',
-                data: candidates.map(c => c.votes)
-            }],
-            chart: {
-                type: 'bar',
-                height: 350,
-                animations: {
+        // Try to use ApexCharts if available
+        if (typeof ApexCharts !== 'undefined') {
+            const options = {
+                series: [{
+                    name: 'Votes',
+                    data: candidates.map(c => c.votes)
+                }],
+                chart: {
+                    type: 'bar',
+                    height: 350,
+                    animations: {
+                        enabled: true,
+                        dynamicAnimation: {
+                            speed: 350
+                        }
+                    },
+                    background: 'transparent',
+                    foreColor: '#fff'
+                },
+                plotOptions: {
+                    bar: {
+                        horizontal: false,
+                        columnWidth: '55%',
+                        borderRadius: 8,
+                        distributed: true
+                    }
+                },
+                dataLabels: {
                     enabled: true,
-                    dynamicAnimation: {
-                        speed: 350
-                    }
-                },
-                background: 'transparent',
-                foreColor: '#fff'
-            },
-            plotOptions: {
-                bar: {
-                    horizontal: false,
-                    columnWidth: '55%',
-                    borderRadius: 8,
-                    distributed: true
-                }
-            },
-            dataLabels: {
-                enabled: true,
-                formatter: function (val) {
-                    return val.toFixed(2)
-                },
-                style: {
-                    colors: ['#fff']
-                }
-            },
-            colors: candidates.map(c => {
-                if (elected.includes(c.id)) return '#2ecc71';
-                if (eliminated.includes(c.id)) return '#e74c3c';
-                return '#3498db';
-            }),
-            xaxis: {
-                categories: candidates.map(c => c.name),
-                labels: {
+                    formatter: function (val) {
+                        return val.toFixed(2)
+                    },
                     style: {
-                        colors: Array(candidates.length).fill('#fff')
-                    }
-                }
-            },
-            yaxis: {
-                title: {
-                    text: 'Votes',
-                    style: {
-                        color: '#fff'
+                        colors: ['#fff']
                     }
                 },
-                min: 0,
-                max: Math.max(quota * 1.2, ...candidates.map(c => c.votes))
-            },
-            annotations: {
-                yaxis: [{
-                    y: quota,
-                    borderColor: '#e74c3c',
-                    label: {
-                        text: 'Quota',
+                colors: candidates.map(c => {
+                    if (elected.includes(c.id)) return '#2ecc71';
+                    if (eliminated.includes(c.id)) return '#e74c3c';
+                    return '#3498db';
+                }),
+                xaxis: {
+                    categories: candidates.map(c => c.name),
+                    labels: {
                         style: {
-                            color: '#fff',
-                            background: '#e74c3c'
+                            colors: Array(candidates.length).fill('#fff')
                         }
                     }
-                }]
-            },
-            grid: {
-                borderColor: '#404040'
-            },
-            theme: {
-                mode: 'dark'
-            }
-        };
+                },
+                yaxis: {
+                    title: {
+                        text: 'Votes',
+                        style: {
+                            color: '#fff'
+                        }
+                    },
+                    min: 0,
+                    max: Math.max(quota * 1.2, ...candidates.map(c => c.votes))
+                },
+                annotations: {
+                    yaxis: [{
+                        y: quota,
+                        borderColor: '#e74c3c',
+                        label: {
+                            text: 'Quota',
+                            style: {
+                                color: '#fff',
+                                background: '#e74c3c'
+                            }
+                        }
+                    }]
+                },
+                grid: {
+                    borderColor: '#404040'
+                },
+                theme: {
+                    mode: 'dark'
+                }
+            };
 
-        if (chart) {
-            chart.destroy();
+            if (chart) {
+                chart.destroy();
+            }
+            
+            chart = new ApexCharts(document.querySelector("#voteChart"), options);
+            chart.render();
+        } else {
+            // Fallback to simple HTML chart
+            createSimpleChart();
         }
-        
-        chart = new ApexCharts(document.querySelector("#voteChart"), options);
-        chart.render();
     } catch (error) {
         console.error('Chart initialization failed:', error);
+        // Fallback to simple chart
+        createSimpleChart();
     }
 }
 
-async function updateChart() {
-    if (!chart) return;
+function createSimpleChart() {
+    const chartContainer = document.querySelector("#voteChart");
+    if (!chartContainer) return;
+    
+    // Clear existing content
+    chartContainer.innerHTML = '';
+    
+    // Create simple HTML bar chart
+    const maxVotes = Math.max(quota * 1.2, ...candidates.map(c => c.votes), 1);
+    
+    chartContainer.innerHTML = `
+        <div style="padding: 20px; background: #2d2d2d; border-radius: 8px;">
+            <h3 style="color: #fff; margin-bottom: 20px; text-align: center;">Vote Distribution</h3>
+            <div style="position: relative;">
+                ${candidates.map(candidate => {
+                    const percentage = (candidate.votes / maxVotes) * 100;
+                    const color = elected.includes(candidate.id) ? '#2ecc71' : 
+                                eliminated.includes(candidate.id) ? '#e74c3c' : '#3498db';
+                    return `
+                        <div style="margin-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span style="color: #fff; font-size: 14px;">${candidate.name}</span>
+                                <span style="color: #fff; font-size: 14px;">${candidate.votes.toFixed(2)} votes</span>
+                            </div>
+                            <div style="background: #404040; height: 25px; border-radius: 12px; position: relative; overflow: hidden;">
+                                <div style="background: ${color}; height: 100%; width: ${percentage}%; border-radius: 12px; transition: width 0.3s ease;"></div>
+                                ${candidate.votes >= quota ? '<div style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); color: #fff; font-size: 12px; font-weight: bold;">✓</div>' : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #404040;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #e74c3c; font-weight: bold;">Quota: ${quota} votes</span>
+                        <div style="display: flex; gap: 15px; font-size: 12px;">
+                            <span style="color: #2ecc71;">● Elected</span>
+                            <span style="color: #e74c3c;">● Eliminated</span>
+                            <span style="color: #3498db;">● In Running</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
 
-    try {
-        // Update the chart data and styling
-        return chart.updateOptions({
-            series: [{
-                data: candidates.map(c => c.votes)
-            }],
-            colors: candidates.map(c => {
-                if (elected.includes(c.id)) return '#2ecc71';
-                if (eliminated.includes(c.id)) return '#e74c3c';
-                return '#3498db';
-            }),
-            yaxis: {
-                min: 0,
-                max: Math.max(quota * 1.2, ...candidates.map(c => c.votes))
-            },
-            annotations: {
-                yaxis: [{
-                    y: quota,
-                    borderColor: '#e74c3c',
-                    label: {
-                        text: 'Quota',
-                        style: {
-                            color: '#fff',
-                            background: '#e74c3c'
+async function updateChart() {
+    if (chart && typeof ApexCharts !== 'undefined') {
+        // Update ApexCharts if available
+        try {
+            return chart.updateOptions({
+                series: [{
+                    data: candidates.map(c => c.votes)
+                }],
+                colors: candidates.map(c => {
+                    if (elected.includes(c.id)) return '#2ecc71';
+                    if (eliminated.includes(c.id)) return '#e74c3c';
+                    return '#3498db';
+                }),
+                yaxis: {
+                    min: 0,
+                    max: Math.max(quota * 1.2, ...candidates.map(c => c.votes))
+                },
+                annotations: {
+                    yaxis: [{
+                        y: quota,
+                        borderColor: '#e74c3c',
+                        label: {
+                            text: 'Quota',
+                            style: {
+                                color: '#fff',
+                                background: '#e74c3c'
+                            }
                         }
-                    }
-                }]
-            }
-        });
-    } catch (error) {
-        console.error('Chart update failed:', error);
-        throw error;
+                    }]
+                }
+            });
+        } catch (error) {
+            console.error('Chart update failed:', error);
+            // Fall back to simple chart
+            createSimpleChart();
+        }
+    } else {
+        // Update simple chart
+        createSimpleChart();
     }
 }
 
@@ -805,74 +887,124 @@ function initializeTooltips() {
 // Replace createSankeyDiagram with Plotly Sankey implementation
 function createSankeyDiagram(round) {
     try {
-        if (typeof Plotly === 'undefined') {
-            console.warn('Plotly is not loaded, skipping Sankey diagram');
-            return;
-        }
+        if (typeof Plotly !== 'undefined') {
+            // Prepare data for Plotly Sankey
+            const flowData = voteFlows.filter(flow => flow.round <= round);
+            if (flowData.length === 0) return; // Skip if no flow data
 
-        // Prepare data for Plotly Sankey
-        const flowData = voteFlows.filter(flow => flow.round <= round);
-        if (flowData.length === 0) return; // Skip if no flow data
-
-        const nodeNames = [];
-        // Collect unique node names
-        flowData.forEach(flow => {
-            if (!nodeNames.includes(flow.from)) nodeNames.push(flow.from);
-            if (!nodeNames.includes(flow.to)) nodeNames.push(flow.to);
-        });
-    
-        const nodeIndices = {};
-        nodeNames.forEach((name, index) => {
-            nodeIndices[name] = index;
-        });
-    
-        const sankeyData = {
-            type: "sankey",
-            orientation: "h",
-            node: {
-                pad: 15,
-                thickness: 20,
-                line: {
-                    color: "black",
-                    width: 0.5
-                },
-                label: nodeNames,
-                color: nodeNames.map(name => {
-                    const candidate = candidates.find(c => c.name === name);
-                    if (elected.includes(candidate.id)) return 'rgba(76, 175, 80, 0.8)';
-                    if (eliminated.includes(candidate.id)) return 'rgba(244, 67, 54, 0.8)';
-                    return 'rgba(33, 150, 243, 0.8)';
-                })
-            },
-            link: {
-                source: flowData.map(flow => nodeIndices[flow.from]),
-                target: flowData.map(flow => nodeIndices[flow.to]),
-                value: flowData.map(flow => flow.value),
-                color: flowData.map(flow => {
-                    const candidate = candidates.find(c => c.name === flow.to);
-                    if (elected.includes(candidate.id)) return "rgba(76, 175, 80, 0.6)";
-                    if (eliminated.includes(candidate.id)) return "rgba(244, 67, 54, 0.6)";
-                    return "rgba(33, 150, 243, 0.6)";
-                })
-            }
-        };
-    
-        const layout = {
-            title: "Vote Transfers Sankey Diagram",
-            font: {
-                size: 10
-            },
-            margin: { t: 50, l: 50, r: 50, b: 50 }
-        };
-    
-        Plotly.newPlot('sankeyDiagram', [sankeyData], layout, {responsive: true})
-            .catch(error => {
-                console.error('Error creating Sankey diagram:', error);
+            const nodeNames = [];
+            // Collect unique node names
+            flowData.forEach(flow => {
+                if (!nodeNames.includes(flow.from)) nodeNames.push(flow.from);
+                if (!nodeNames.includes(flow.to)) nodeNames.push(flow.to);
             });
+        
+            const nodeIndices = {};
+            nodeNames.forEach((name, index) => {
+                nodeIndices[name] = index;
+            });
+        
+            const sankeyData = {
+                type: "sankey",
+                orientation: "h",
+                node: {
+                    pad: 15,
+                    thickness: 20,
+                    line: {
+                        color: "black",
+                        width: 0.5
+                    },
+                    label: nodeNames,
+                    color: nodeNames.map(name => {
+                        const candidate = candidates.find(c => c.name === name);
+                        if (elected.includes(candidate.id)) return 'rgba(76, 175, 80, 0.8)';
+                        if (eliminated.includes(candidate.id)) return 'rgba(244, 67, 54, 0.8)';
+                        return 'rgba(33, 150, 243, 0.8)';
+                    })
+                },
+                link: {
+                    source: flowData.map(flow => nodeIndices[flow.from]),
+                    target: flowData.map(flow => nodeIndices[flow.to]),
+                    value: flowData.map(flow => flow.value),
+                    color: flowData.map(flow => {
+                        const candidate = candidates.find(c => c.name === flow.to);
+                        if (elected.includes(candidate.id)) return "rgba(76, 175, 80, 0.6)";
+                        if (eliminated.includes(candidate.id)) return "rgba(244, 67, 54, 0.6)";
+                        return "rgba(33, 150, 243, 0.6)";
+                    })
+                }
+            };
+        
+            const layout = {
+                title: "Vote Transfers Sankey Diagram",
+                font: {
+                    size: 10
+                },
+                margin: { t: 50, l: 50, r: 50, b: 50 }
+            };
+        
+            Plotly.newPlot('sankeyDiagram', [sankeyData], layout, {responsive: true})
+                .catch(error => {
+                    console.error('Error creating Sankey diagram:', error);
+                });
+        } else {
+            // Fallback to simple transfer visualization
+            createSimpleTransferVisualization(round);
+        }
     } catch (error) {
         console.error('Error in createSankeyDiagram:', error);
         // Continue simulation even if diagram fails
+        createSimpleTransferVisualization(round);
     }
+}
+
+function createSimpleTransferVisualization(round) {
+    const sankeyContainer = document.querySelector('#sankeyDiagram');
+    if (!sankeyContainer) return;
+    
+    const flowData = voteFlows.filter(flow => flow.round <= round);
+    
+    if (flowData.length === 0) {
+        sankeyContainer.innerHTML = `
+            <div style="padding: 20px; background: #2d2d2d; border-radius: 8px; text-align: center;">
+                <h3 style="color: #fff; margin-bottom: 10px;">Vote Transfers</h3>
+                <p style="color: #a0a0a0;">No vote transfers yet</p>
+            </div>
+        `;
+        return;
+    }
+    
+    sankeyContainer.innerHTML = `
+        <div style="padding: 20px; background: #2d2d2d; border-radius: 8px;">
+            <h3 style="color: #fff; margin-bottom: 20px; text-align: center;">Vote Transfers</h3>
+            <div style="max-height: 300px; overflow-y: auto;">
+                ${flowData.map(flow => {
+                    const fromCandidate = candidates.find(c => c.name === flow.from);
+                    const toCandidate = candidates.find(c => c.name === flow.to);
+                    const fromColor = elected.includes(fromCandidate?.id) ? '#2ecc71' : 
+                                    eliminated.includes(fromCandidate?.id) ? '#e74c3c' : '#3498db';
+                    const toColor = elected.includes(toCandidate?.id) ? '#2ecc71' : 
+                                  eliminated.includes(toCandidate?.id) ? '#e74c3c' : '#3498db';
+                    
+                    return `
+                        <div style="margin-bottom: 15px; padding: 10px; background: #404040; border-radius: 6px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="color: ${fromColor}; font-weight: bold;">${flow.from}</span>
+                                    <span style="color: #a0a0a0;">→</span>
+                                    <span style="color: ${toColor}; font-weight: bold;">${flow.to}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="color: #fff; font-weight: bold;">${flow.value.toFixed(2)} votes</div>
+                                    <div style="color: #a0a0a0; font-size: 12px;">Round ${flow.round}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
 }
 
 // Update candidate cards based on their status
@@ -880,6 +1012,14 @@ function updateCandidateCards() {
     const candidateCards = document.querySelectorAll('.candidate-card');
     candidateCards.forEach((card, index) => {
         const candidate = candidates[index];
+        
+        // Update vote count
+        const voteCountElement = card.querySelector('.vote-count');
+        if (voteCountElement) {
+            voteCountElement.textContent = `${candidate.votes.toFixed(2)} votes`;
+        }
+        
+        // Update status styling
         if (elected.includes(candidate.id)) {
             card.classList.add('elected');
             card.classList.remove('eliminated');
