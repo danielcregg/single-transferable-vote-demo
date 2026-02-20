@@ -9,6 +9,7 @@ const progressBar = document.getElementById('progressBar');
 const electionStatus = document.getElementById('electionStatus');
 const prevActionBtn = document.getElementById('prevActionBtn');
 const nextActionBtn = document.getElementById('nextActionBtn');
+const actionProgress = document.getElementById('actionProgress');
 
 // State variables
 let chart = null;
@@ -87,7 +88,7 @@ function generateRandomName() {
     } while (window.usedFirstNames.has(firstName));
     
     do {
-        lastName = lastNames[Math.floor(Math.random() * firstNames.length)];
+        lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
     } while (window.usedLastNames.has(lastName));
     
     // Mark names as used
